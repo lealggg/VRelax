@@ -72,11 +72,28 @@ public class skc2 : MonoBehaviour
         }
     }
 
-    string DetermineState(float heartRate)
-    {
-        if (heartRate > 90) return "stressed"; // Stressed condition
-        if (heartRate >= 60 && heartRate <= 90) return "normal"; // Normal condition
+    string DetermineState(float heartRate){
+        if (heartRate > 90){
+            objetosNormal[0].SetActive(false);
+            objetosNormal[1].SetActive(false);
+            objetosCalma[0].SetActive(false);
+            objetosEstres[0].SetActive(true);
+         return "stressed"; // Stressed condition
+        }
+        else if (heartRate > 60){
+            objetosNormal[0].SetActive(true);
+            objetosNormal[1].SetActive(true);
+            objetosCalma[0].SetActive(false);
+            objetosEstres[0].SetActive(false);
+         return "normal"; // Normal condition
+        }
+        else{
+            objetosNormal[0].SetActive(false);
+            objetosNormal[1].SetActive(false);
+            objetosCalma[0].SetActive(true);
+            objetosEstres[0].SetActive(false);
         return "calm"; // Calm condition
+        }
     }
 
     int GetSkyboxIndexForState(string state)
@@ -86,7 +103,7 @@ public class skc2 : MonoBehaviour
             "calm" => 0,
             "normal" => 1,
             "stressed" => 2,
-            _ => -1
+            _ => 1
         };
     }
 
@@ -113,22 +130,38 @@ public class skc2 : MonoBehaviour
     {
         switch (selectedOption)
         {
-            case 0:
+            case 0: //calma
                 Debug.Log("Has seleccionado la opción 1: Iniciar juego.");
                 Debug.Log($"Skybox set to Calm: {skyboxes[0].name}");
+                objetosNormal[0].SetActive(false);
+                objetosNormal[1].SetActive(false);
+                objetosCalma[0].SetActive(true);
+                objetosEstres[0].SetActive(false);
                 return 0;
 
-            case 1:
+            case 1: //normal
                 Debug.Log("Has seleccionado la opción 2: Cargar partida.");
                 return 1;
+                objetosNormal[0].SetActive(true);
+                objetosNormal[1].SetActive(true);
+                objetosCalma[0].SetActive(false);
+                objetosEstres[0].SetActive(false);
 
-            case 2:
+            case 2: //estres
                 Debug.Log("Has seleccionado la opción 3: Salir del juego.");
+                objetosNormal[0].SetActive(false);
+                objetosNormal[1].SetActive(false);
+                objetosCalma[0].SetActive(false);
+                objetosEstres[0].SetActive(true);
                 return 2;
 
             default:
                 Debug.Log("Opción no válida. Por favor, selecciona entre 1, 2 o 3.");
                 return 0;
+                objetosNormal[0].SetActive(false);
+                objetosNormal[1].SetActive(false);
+                objetosCalma[0].SetActive(true);
+                objetosEstres[0].SetActive(false);
         }
     }
 }

@@ -1,104 +1,115 @@
 using UnityEngine;
 
-public class skc3 : MonoBehaviour
+public class SKC2 : MonoBehaviour
 {
-    [SerializeField] private Material[] skyboxes; // Assign skybox materials in the Inspector (index 0 = calm, 1 = normal, 2 = stressed)
-    [SerializeField] private float transitionSpeed = 2f; // Speed for smooth transition
-    private Material currentSkybox; // The active skybox being displayed
-    private float simulatedHeartRate; // Variable to simulate heart rate input
-    private string currentState; // Track the current condition (calm, normal, stressed)
+    [SerializeField] private Material[] skyboxes; // Assign skybox materials (index 0 = calm, 1 = normal, 2 = stressed)
+    [SerializeField] private float transitionSpeed = 2f; // Speed for smooth skybox transitions
+    private Material currentSkybox; // The current active skybox
+    private float simulatedHeartRate; // Variable to store the calculated heart rate
+    private string currentState; // Tracks the current state (calm, normal, stressed)
+    public GameObject[] objetosCalma;
+    public GameObject[] objetosNormal;
+    public GameObject[] objetosEstres;
 
-    private AudioSource audioSource; // Audio source for microphone input
-    private float[] audioData; // Array to hold microphone data
-    private int sampleRate = 44100; // Standard audio sample rate
-    private float breathFrequency; // Estimated breathing frequency (in Hz)
-    private float heartRate; // Calculated heart rate based on breathing frequency
+    private AudioClip microphoneInput; // AudioClip for microphone input
+    private const int SampleRate = 44100; // Sample rate for microphone input
+    private const int SampleSize = 2048; // Size of the audio buffer for processing frequencies
 
     void Start()
     {
+        // Validate that all required skyboxes are assigned
         if (skyboxes.Length < 3)
         {
             Debug.LogError("Please assign at least 3 skyboxes for calm, normal, and stressed states.");
             return;
         }
 
-        // Initialize to the calm skybox and starting heart rate
-        currentSkybox = skyboxes[HandleOption(GameData.userMood)];
+        // Initialize to the starting state based on user mood
+        int moodIndex = HandleOption(GameData.userMood);
+        currentSkybox = skyboxes[moodIndex];
         RenderSettings.skybox = currentSkybox;
         DynamicGI.UpdateEnvironment();
 
-        currentState = "normal";
+        // Set the initial state
+        currentState = DetermineStateBasedOnMood(moodIndex);
+        UpdateObjectsState(currentState);
 
-        // Start microphone recording
-        audioSource = gameObject.AddComponent<AudioSource>();
-        audioSource.loop = true;
+        // Start capturing microphone input
+        InitializeMicrophone();
 
-        // Ensure the microphone is available and start recording
+        // Periodically check heart rate and change state
+        InvokeRepeating(nameof(CheckHeartRateAndChangeSkybox), 1f, 2f);
+    }
+
+    void InitializeMicrophone()
+    {
+        // Start recording from the default microphone
         if (Microphone.devices.Length > 0)
         {
-            audioSource.clip = Microphone.Start(Microphone.devices[0], true, 1, sampleRate);
-            while (!(Microphone.GetPosition(Microphone.devices[0]) > 0)) { } // Wait for the microphone to start
-            audioSource.Play();
+            microphoneInput = Microphone.Start(null, true, 1, SampleRate);
+            Debug.Log("Microphone initialized.");
         }
         else
         {
-            Debug.LogError("No microphone found.");
+            Debug.LogError("No microphone detected. Ensure your device has an active microphone.");
         }
-
-        // Initialize audio data array
-        audioData = new float[sampleRate];
-
-        // Start evaluating the heart rate based on microphone data
-        InvokeRepeating(nameof(ProcessBreathingData), 1f, 1f); // Process every second
-        InvokeRepeating(nameof(CheckHeartRateAndChangeSkybox), 1f, 2f); // Evaluate heart rate condition every 2 seconds
     }
 
-    void ProcessBreathingData()
+    float CalculateHeartRateFromMicrophone()
+{
+    // Retrieve microphone data
+    float[] audioData = new float[SampleSize];
+    microphoneInput.GetData(audioData, 0);
+
+    // Variables to store frequency analysis results
+    float maxFrequency = 0f;
+    float maxAmplitude = 0f;
+
+    // Analyze the microphone data for the strongest frequency
+    for (int i = 0; i < audioData.Length; i++)
     {
-        // Get microphone data into the audioData array
-        audioSource.GetOutputData(audioData, 0);
+        float amplitude = Mathf.Abs(audioData[i]); // Use absolute value to handle negative samples
 
-        // Calculate the frequency of the breathing pattern using a Fourier Transform
-        float frequency = CalculateFrequency(audioData);
-
-        // Estimate the breathing rate in Hz (breaths per second)
-        breathFrequency = frequency;
-
-        // Convert breathing frequency to heart rate (assuming 1 breath = 1/3 heartbeats)
-        heartRate = breathFrequency * 60f * 3; // Simple estimation of heart rate (in bpm)
-
-        // Log the heart rate estimate for debugging
-        Debug.Log($"Estimated Heart Rate: {heartRate} bpm");
-    }
-
-    float CalculateFrequency(float[] data)
-    {
-        // Perform a simple frequency analysis (Fourier Transform or other methods)
-        // Here we just calculate the dominant frequency by looking at the peak values in the audio data
-        float maxAmplitude = 0;
-        int maxIndex = 0;
-
-        for (int i = 0; i < data.Length / 2; i++) // Only look at the first half of the spectrum (real frequencies)
+        if (amplitude > maxAmplitude)
         {
-            if (Mathf.Abs(data[i]) > maxAmplitude)
-            {
-                maxAmplitude = Mathf.Abs(data[i]);
-                maxIndex = i;
-            }
+            maxAmplitude = amplitude;
+            maxFrequency = i * (SampleRate / 2f) / SampleSize; // Convert index to frequency
         }
-
-        // Convert index to frequency (this is an approximation, you can use a more accurate FFT if needed)
-        float frequency = maxIndex * sampleRate / data.Length;
-
-        return frequency;
     }
+
+    // Debugging: Log the calculated max frequency and amplitude
+    Debug.Log($"Max Frequency: {maxFrequency} Hz, Max Amplitude: {maxAmplitude}");
+
+    // Adjusted expected range based on realistic microphone input
+    if (maxFrequency < 0.5f || maxFrequency > 10f) // Expanded range
+    {
+        Debug.LogWarning("Frequency out of realistic range for heart rate calculation.");
+        return 60f; // Default to resting heart rate
+    }
+
+    // Convert frequency to heart rate and clamp to realistic range
+    float heartRate = Mathf.Clamp(maxFrequency * 60f / 2f, 20f, 110f);
+
+    // Debugging: Log the heart rate
+    Debug.Log($"Calculated Heart Rate: {heartRate}");
+
+    return heartRate;
+}
+
 
     void CheckHeartRateAndChangeSkybox()
     {
-        string newState = DetermineState(heartRate);
+        // Calculate heart rate using microphone input
+        simulatedHeartRate = CalculateHeartRateFromMicrophone();
+        Debug.Log($"Calculated Heart Rate: {simulatedHeartRate}");
 
-        if (newState != currentState) // Change skybox only if the state changes
+        // Determine the new state
+        string newState = DetermineState(simulatedHeartRate);
+
+        // Change state and skybox if the state has changed
+        if (newState != currentState)
         {
+            Debug.Log($"State changed from {currentState} to {newState}");
             currentState = newState;
             int skyboxIndex = GetSkyboxIndexForState(newState);
             if (skyboxIndex >= 0 && skyboxIndex < skyboxes.Length)
@@ -110,61 +121,87 @@ public class skc3 : MonoBehaviour
 
     string DetermineState(float heartRate)
     {
-        if (heartRate > 90) return "stressed"; // Stressed condition
-        if (heartRate >= 60 && heartRate <= 90) return "normal"; // Normal condition
-        return "calm"; // Calm condition
+        // Determine the state based on heart rate ranges
+        if (heartRate > 90)
+        {
+            UpdateObjectsState("stressed");
+            return "stressed"; // Stressed condition
+        }
+        else if (heartRate > 60)
+        {
+            UpdateObjectsState("normal");
+            return "normal"; // Normal condition
+        }
+        else
+        {
+            UpdateObjectsState("calm");
+            return "calm"; // Calm condition
+        }
+    }
+
+    string DetermineStateBasedOnMood(int moodIndex)
+    {
+        // Map mood index to state
+        return moodIndex switch
+        {
+            0 => "calm",
+            1 => "normal",
+            2 => "stressed",
+            _ => "calm"
+        };
     }
 
     int GetSkyboxIndexForState(string state)
     {
+        // Map state to skybox index
         return state switch
         {
             "calm" => 0,
             "normal" => 1,
             "stressed" => 2,
-            _ => -1
+            _ => 1
         };
     }
 
     System.Collections.IEnumerator SmoothTransitionToSkybox(Material targetSkybox)
     {
+        // Smoothly transition to the target skybox
         Material startingSkybox = RenderSettings.skybox;
         float t = 0;
 
         while (t < 1)
         {
             t += Time.deltaTime * transitionSpeed;
-
-            // Smoothly interpolate between the starting and target skybox materials
             RenderSettings.skybox.Lerp(startingSkybox, targetSkybox, t);
             DynamicGI.UpdateEnvironment();
             yield return null;
         }
 
-        RenderSettings.skybox = targetSkybox; // Ensure the target skybox is fully applied
+        RenderSettings.skybox = targetSkybox;
         DynamicGI.UpdateEnvironment();
+    }
+
+    void UpdateObjectsState(string state)
+    {
+        // Activate objects based on the current state
+        bool isCalm = state == "calm";
+        bool isNormal = state == "normal";
+        bool isStressed = state == "stressed";
+
+        foreach (var obj in objetosCalma) obj.SetActive(isCalm);
+        foreach (var obj in objetosNormal) obj.SetActive(isNormal);
+        foreach (var obj in objetosEstres) obj.SetActive(isStressed);
     }
 
     int HandleOption(int selectedOption)
     {
+        // Handle initial user mood and return corresponding index
         switch (selectedOption)
         {
-            case 0:
-                Debug.Log("Has seleccionado la opción 1: Iniciar juego.");
-                Debug.Log($"Skybox set to Calm: {skyboxes[0].name}");
-                return 0;
-
-            case 1:
-                Debug.Log("Has seleccionado la opción 2: Cargar partida.");
-                return 1;
-
-            case 2:
-                Debug.Log("Has seleccionado la opción 3: Salir del juego.");
-                return 2;
-
-            default:
-                Debug.Log("Opción no válida. Por favor, selecciona entre 1, 2 o 3.");
-                return 0;
+            case 0: UpdateObjectsState("calm"); return 0;
+            case 1: UpdateObjectsState("normal"); return 1;
+            case 2: UpdateObjectsState("stressed"); return 2;
+            default: Debug.LogError("Invalid mood selected. Defaulting to Calm."); UpdateObjectsState("calm"); return 0;
         }
     }
 }
